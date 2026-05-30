@@ -188,6 +188,7 @@ let activeColIdx = -1, activeFilter = 'all', activeSort = 'default';
 let ctxCwId = '', ctxUserId = '', ctxUserIdx = -1;
 let commentPanelUnsub = null;
 let syncTimeoutId = null;
+let boldMigrationDone = false;
 
 // ===== 起動 =====
 document.addEventListener('DOMContentLoaded', () => {
@@ -224,6 +225,12 @@ function startFirestoreListeners() {
     const btn = document.getElementById('sync-btn');
     btn.disabled = false;
     btn.textContent = '🔄 今すぐ同期';
+
+    // 太字の一回限り移行（スプシ→Firestore）
+    if (!boldMigrationDone) {
+      boldMigrationDone = true;
+      migrateBoldFromSnapshot(matrixData);
+    }
 
     renderTable();
   });
@@ -465,6 +472,24 @@ function renderTable() {
   });
 
   initColResize();
+}
+
+// ===== 太字移行（スプシ→Firestore、初回のみ）=====
+async function migrateBoldFromSnapshot(data) {
+  if (boldCells.size > 0) return; // すでにFirestoreにデータあり → スキップ
+  const toWrite = [];
+  data.questions.forEach(q => {
+    q.answers.forEach((ans, i) => {
+      if (ans.isBold) {
+        const k = q.courseWorkId + '::' + data.schools[i].userId;
+        toWrite.push(setDoc(doc(db, 'boldCells', k), { isBold: true, updatedAt: new Date().toISOString() }));
+      }
+    });
+  });
+  if (toWrite.length > 0) {
+    await Promise.all(toWrite);
+    console.log(`太字データを ${toWrite.length} 件Firestoreに移行しました`);
+  }
 }
 
 // ===== 太字トグル（Firestore直接） =====
