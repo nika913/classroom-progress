@@ -91,21 +91,15 @@ thead th.col-task {
 }
 .topic-progress { font-size: 11px; font-weight: 700; text-align: center; }
 .question-row td { border-bottom: 1px solid #F5EDE9; border-right: 1px solid #F5EDE9; vertical-align: top; }
-.task-name { padding: 8px 12px; white-space: normal; background: white; font-weight: 600; }
+.task-name { padding: 8px 12px; white-space: normal; font-weight: 600; background: white; }
 .task-name a { color: #3D2C2A; text-decoration: none; }
 .task-name a:hover { color: #F47355; }
+/* トピック色はJSのinlineスタイルで管理 */
 
 .teacher-answered { background-color: #E0F8F8 !important; }
 .teacher-unanswered { background-color: #FFE8E2 !important; }
 
-.topic-color-0 { background-color: #F5F0FF !important; }
-.topic-color-1 { background-color: #FFE8E2 !important; }
-.topic-color-2 { background-color: #E0F8F8 !important; }
-.topic-color-3 { background-color: #FFF4E0 !important; }
-.topic-color-4 { background-color: #E8F5E9 !important; }
-.topic-color-5 { background-color: #FFF0F5 !important; }
-.topic-color-6 { background-color: #E8EAF6 !important; }
-.topic-color-7 { background-color: #FBE9E7 !important; }
+/* トピック色はJSで直接inlineスタイルに設定するためCSS不要 */
 
 .answer-cell { padding: 8px 10px; text-align: left; min-width: 120px; cursor: pointer; position: relative; }
 .answer-text { font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-break: break-all; }
@@ -176,12 +170,14 @@ thead th.col-task {
 }
 #user-modal-content h2 { font-size: 22px; font-weight: 800; color: #F47355; margin-bottom: 8px; }
 #user-modal-content p { color: #9B7B76; font-size: 14px; }
-#user-selector {
-  width: 100%; padding: 12px; margin: 20px 0; font-size: 15px;
-  border-radius: 12px; border: 2px solid #FBE0DA; outline: none;
-  font-family: 'Nunito', sans-serif; font-weight: 600;
+.user-name-btn {
+  padding: 14px; font-size: 16px; font-family: 'Nunito', sans-serif;
+  font-weight: 700; color: #C4604A; cursor: pointer;
+  background: #FFF0ED; border: 2px solid #FBE0DA; border-radius: 14px;
+  transition: all 0.15s;
 }
-#user-selector:focus { border-color: #F47355; }
+.user-name-btn:hover { background: #FFE4DE; border-color: #F47355; }
+.user-name-btn.selected { background: #F47355; color: white; border-color: #F47355; transform: scale(1.03); }
 #user-confirm-btn {
   width: 100%; background: linear-gradient(135deg, #F47355, #17C5C4);
   color: white; border: none; padding: 14px; border-radius: 24px;
@@ -242,15 +238,14 @@ thead th { overflow: visible !important; }
   <div id="user-modal-content">
     <h2>👋 こんにちは！</h2>
     <p>操作している人を選んでください</p>
-    <select id="user-selector">
-      <option value="">選択してください...</option>
-      <option value="ニカ">ニカ</option>
-      <option value="三浦">三浦</option>
-      <option value="浅沼">浅沼</option>
-      <option value="松下">松下</option>
-      <option value="小林">小林</option>
-    </select>
-    <button id="user-confirm-btn">アプリを開始する ✨</button>
+    <div id="user-btn-group" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:20px 0;">
+      <button class="user-name-btn" data-value="ニカ">ニカ</button>
+      <button class="user-name-btn" data-value="三浦">三浦</button>
+      <button class="user-name-btn" data-value="浅沼">浅沼</button>
+      <button class="user-name-btn" data-value="松下">松下</button>
+      <button class="user-name-btn" data-value="小林" style="grid-column:1/-1;">小林</button>
+    </div>
+    <button id="user-confirm-btn" style="opacity:0.5;pointer-events:none;">アプリを開始する ✨</button>
   </div>
 </div>
 
@@ -348,6 +343,18 @@ async function migrateBoldFromSnapshot(data) {
   if (writes.length) await Promise.all(writes);
 }
 
+// トピック名から背景色を返す（絵文字ベース）
+function getTopicBg(topicName) {
+  if (!topicName) return '';
+  if (/🟣/.test(topicName)) return '#F3E5F5'; // パステル紫
+  if (/🔴/.test(topicName)) return '#FFEBEE'; // パステル赤
+  if (/🟤/.test(topicName)) return '#EFEBE9'; // パステル茶
+  if (/🟠/.test(topicName)) return '#FFF3E0'; // パステルオレンジ
+  if (/🟡/.test(topicName)) return '#FFFDE7'; // パステル黄
+  if (/🟢/.test(topicName)) return '#E8F5E9'; // パステル緑
+  return ''; // はじめに・📦などは無色
+}
+
 function calcProgress(schoolIdx, topicId=null) {
   const qs=matrixData.questions.filter(q=>{ if(/🧑‍🏫|👩‍🏫|👨‍🏫/.test(q.title)) return false; if(topicId!==null&&q.topicId!==topicId) return false; return true; });
   if (!qs.length) return {done:0,total:0,pct:0,color:'#E0E0E0'};
@@ -357,7 +364,26 @@ function calcProgress(schoolIdx, topicId=null) {
 }
 
 function setupEventListeners() {
-  document.getElementById('user-confirm-btn').addEventListener('click',()=>{ const n=document.getElementById('user-selector').value; if(!n) return; localStorage.setItem('progress_app_user',n); currentUserName=n; document.getElementById('user-select-modal').style.display='none'; document.getElementById('loading').style.display='flex'; });
+  // 名前ボタン選択
+  let selectedUser = '';
+  document.querySelectorAll('.user-name-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.user-name-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedUser = btn.dataset.value;
+      const confirmBtn = document.getElementById('user-confirm-btn');
+      confirmBtn.style.opacity = '1';
+      confirmBtn.style.pointerEvents = 'auto';
+    });
+  });
+
+  document.getElementById('user-confirm-btn').addEventListener('click',()=>{
+    if(!selectedUser) return;
+    localStorage.setItem('progress_app_user', selectedUser);
+    currentUserName = selectedUser;
+    document.getElementById('user-select-modal').style.display='none';
+    document.getElementById('loading').style.display='flex';
+  });
   document.getElementById('sync-btn').addEventListener('click',triggerSync);
   document.getElementById('close-panel').addEventListener('click',closeCommentPanel);
   document.getElementById('submit-comment').addEventListener('click',submitComment);
@@ -420,8 +446,9 @@ function renderTable() {
   } else { statusBar.style.display='none'; container.classList.remove('has-status'); }
 
   const savedWidths=JSON.parse(localStorage.getItem('col_widths')||'{}');
-  const tcMap=new Map(); let ci=0;
-  matrixData.questions.forEach(q=>{ if(q.topicId&&!tcMap.has(q.topicId)) tcMap.set(q.topicId,ci++%8); });
+  // トピックIDごとの背景色マップ（絵文字から決定）
+  const topicBgMap=new Map();
+  matrixData.questions.forEach(q=>{ if(q.topicId&&!topicBgMap.has(q.topicId)) topicBgMap.set(q.topicId, getTopicBg(q.topicName||'')); });
 
   let html='<thead><tr><th class="col-task" style="'+(savedWidths[0]?'width:'+savedWidths[0]:'width:200px')+'">課題</th>';
   visibleIdxs.forEach((si,j)=>{ const s=matrixData.schools[si]; const {done,total,pct,color}=calcProgress(si);
@@ -431,17 +458,19 @@ function renderTable() {
 
   let lastTid='';
   displayList.forEach(q=>{
+    const bg = topicBgMap.get(q.topicId) || '';
+    const bgStyle = bg ? 'background-color:'+bg+';' : '';
+
     if (q.topicId&&q.topicId!==lastTid) {
-      const tc=tcMap.get(q.topicId)??0;
-      html+='<tr class="topic-row topic-color-'+tc+'"><td class="sticky-col">'+escHtml(q.topicName||'トピックなし')+'</td>';
-      visibleIdxs.forEach(si=>{ const {done,total,pct}=calcProgress(si,q.topicId); const col=pct===100?'#17C5C4':pct>=60?'#F47355':'#C4907A'; html+='<td class="topic-progress topic-color-'+tc+'"><span style="color:'+col+'">'+done+'/'+total+'</span></td>'; });
+      html+='<tr class="topic-row"><td class="sticky-col" style="'+bgStyle+'">'+escHtml(q.topicName||'トピックなし')+'</td>';
+      visibleIdxs.forEach(si=>{ const {done,total,pct}=calcProgress(si,q.topicId); const col=pct===100?'#17C5C4':pct>=60?'#F47355':'#C4907A'; html+='<td class="topic-progress" style="'+bgStyle+'"><span style="color:'+col+'">'+done+'/'+total+'</span></td>'; });
       html+='</tr>'; lastTid=q.topicId;
     }
-    const tcc=tcMap.has(q.topicId)?'topic-color-'+tcMap.get(q.topicId):'';
-    html+='<tr class="question-row"><td class="task-name sticky-col '+tcc+'"><a href="'+q.link+'" target="_blank">'+escHtml(q.title)+'</a></td>';
+    html+='<tr class="question-row"><td class="task-name sticky-col" style="'+bgStyle+'"><a href="'+q.link+'" target="_blank">'+escHtml(q.title)+'</a></td>';
     visibleIdxs.forEach(si=>{ const ans=q.answers[si]; const k=q.courseWorkId+'::'+matrixData.schools[si].userId; const isT=/🧑‍🏫|👩‍🏫|👨‍🏫/.test(q.title);
       let cls=''; if(isT) cls+=ans.answer?' teacher-answered':' teacher-unanswered'; if(boldCells.has(k)) cls+=' is-bold'; if(ans.isRed) cls+=' is-red'; const cnt=commentCounts[k]||0;
-      html+='<td class="answer-cell'+cls+'" data-cwid="'+escHtml(q.courseWorkId)+'" data-uid="'+escHtml(matrixData.schools[si].userId)+'" data-uidx="'+si+'" data-key="'+k+'"><div class="answer-text">'+linkify(ans.answer)+'</div>'+(ans.timestamp?'<div class="answer-ts">'+ans.timestamp+'</div>':'')+(cnt>0?'<span class="comment-badge">💬<span class="comment-count">'+cnt+'</span></span>':'')+'</td>';
+      const cellBg = (!isT && bg) ? 'background-color:'+bg+';' : '';
+      html+='<td class="answer-cell'+cls+'" style="'+cellBg+'" data-cwid="'+escHtml(q.courseWorkId)+'" data-uid="'+escHtml(matrixData.schools[si].userId)+'" data-uidx="'+si+'" data-key="'+k+'"><div class="answer-text">'+linkify(ans.answer)+'</div>'+(ans.timestamp?'<div class="answer-ts">'+ans.timestamp+'</div>':'')+(cnt>0?'<span class="comment-badge">💬<span class="comment-count">'+cnt+'</span></span>':'')+'</td>';
     });
     html+='</tr>';
   });
@@ -517,6 +546,7 @@ async function resolveAllComments() {
   finally { btn.disabled=false; btn.textContent='✓ すべて解決'; }
 }
 
+
 let toastTimer=null;
 function showToast(msg) { const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; if(toastTimer) clearTimeout(toastTimer); toastTimer=setTimeout(()=>{t.style.display='none';},2500); }
 function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -534,7 +564,7 @@ function initColResize() {
     const th=e.target.closest('th');if(!th||th.getBoundingClientRect().right-e.clientX>8)return;
     e.preventDefault();e.stopPropagation();r=true;rTh=th;sX=e.clientX;sW=th.getBoundingClientRect().width;
     document.body.style.cursor='col-resize';document.body.style.userSelect='none';
-    const mv=ev=>{rTh.style.width=Math.max(40,sW+ev.clientX-sX)+'px';};
+    const mv=ev=>{const nw=Math.max(60,sW+ev.clientX-sX)+'px';rTh.style.width=nw;rTh.style.minWidth=nw;rTh.style.maxWidth=nw;};
     const up=()=>{r=false;document.body.style.cursor='';document.body.style.userSelect='';document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);const w={};ths.forEach((t,j)=>{w[j]=t.getBoundingClientRect().width+'px';});localStorage.setItem('col_widths',JSON.stringify(w));};
     document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
   });
