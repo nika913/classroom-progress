@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Classroom進捗表</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Google Sans', 'Hiragino Sans', sans-serif; font-size: 13px; background: #f8f9fa; color: #202124; overflow: hidden; height: 100vh; }
+#header { position: fixed; top: 0; left: 0; right: 0; height: 52px; background: #1a73e8; color: white; display: flex; align-items: center; padding: 0 16px; gap: 12px; z-index: 500; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+#header h1 { font-size: 16px; font-weight: 500; flex: 1; }
+#sync-btn { background: white; color: #1a73e8; border: none; border-radius: 4px; padding: 6px 14px; font-size: 13px; font-weight: 500; cursor: pointer; }
+#sync-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+#filter-bar { position: fixed; top: 52px; left: 0; right: 0; height: 48px; background: white; border-bottom: 1px solid #dadce0; display: flex; align-items: center; padding: 0 16px; gap: 8px; z-index: 450; overflow-x: auto; white-space: nowrap; }
+.filter-btn { background: #f1f3f4; border: 1px solid #dadce0; border-radius: 16px; padding: 6px 12px; font-size: 12px; cursor: pointer; color: #3c4043; }
+.filter-btn.active { background: #e8f0fe; color: #1a73e8; border-color: #1a73e8; font-weight: bold; }
+
+#filter-status-bar { position: fixed; top: 100px; left: 0; right: 0; height: 32px; background: #e8f0fe; border-bottom: 1px solid #1a73e8; display: none; align-items: center; padding: 0 16px; font-size: 12px; color: #1a73e8; z-index: 440; }
+#clear-filter { margin-left: auto; cursor: pointer; text-decoration: underline; font-weight: bold; }
+
+#table-container { position: fixed; top: 100px; left: 0; right: 0; bottom: 0; overflow: auto; transition: top 0.2s; }
+#table-container.has-status { top: 132px; }
+table { border-collapse: collapse; white-space: nowrap; min-width: 100%; table-layout: fixed; }
+thead th { position: sticky; top: 0; z-index: 100; background: #f1f3f4; border-bottom: 2px solid #dadce0; border-right: 1px solid #dadce0; padding: 8px 12px; text-align: left; overflow: visible; }
+thead th:not(.col-task) { min-width: 80px; }
+thead th.col-task { position: sticky; top: 0; left: 0; z-index: 150; background: #f1f3f4; border-right: 2px solid #dadce0 !important; white-space: normal; word-break: break-word; width: 200px; }
+.task-name.sticky-col, .topic-row td.sticky-col { position: sticky; left: 0; z-index: 10; border-right: 2px solid #dadce0 !important; white-space: normal; word-break: break-word; width: 200px; }
+
+.topic-row td { padding: 8px 12px; font-weight: 600; color: #3f51b5; border-top: 1px solid #c5cae9; border-bottom: 1px solid #c5cae9; }
+.topic-row-rest { border-top: 1px solid #c5cae9; border-bottom: 1px solid #c5cae9; }
+.question-row td { border-bottom: 1px solid #e0e0e0; border-right: 1px solid #e8e8e8; vertical-align: top; }
+.task-name { padding: 8px 12px; white-space: normal; background: white; }
+
+.teacher-answered { background-color: #e8f0fe !important; }
+.teacher-unanswered { background-color: #fce8e6 !important; }
+
+.topic-color-0 { background-color: #e0e0e0 !important; }
+.topic-color-1 { background-color: #e8d5f5 !important; }
+.topic-color-2 { background-color: #fad7d7 !important; }
+.topic-color-3 { background-color: #fde8cc !important; }
+.topic-color-4 { background-color: #fef9c3 !important; }
+.topic-color-5 { background-color: #d5f0d5 !important; }
+.topic-color-6 { background-color: #cce5f5 !important; }
+.topic-color-7 { background-color: #f1f3f4 !important; }
+
+.answer-cell { padding: 8px 10px; text-align: left; min-width: 120px; cursor: pointer; position: relative; }
+.answer-text { font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-break: break-all; }
+.answer-ts { font-size: 10px; color: #80868b; margin-top: 2px; }
+.is-bold { font-weight: bold !important; color: #000; }
+.is-red { color: #FF0000 !important; }
+.comment-badge { display: inline-block; font-size: 10px; margin-left: 4px; }
+.comment-count { background: #1a73e8; color: white; border-radius: 8px; padding: 0 4px; font-size: 9px; }
+
+.context-menu { position: fixed; background: white; border: 1px solid #dadce0; border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); padding: 4px 0; z-index: 1000; min-width: 220px; display: none; }
+.context-menu.visible { display: block; }
+.ctx-item { padding: 10px 16px; cursor: pointer; font-size: 13px; }
+.ctx-item:hover { background: #f1f3f4; }
+.ctx-header { padding: 6px 16px; font-size: 11px; color: #70757a; font-weight: bold; border-bottom: 1px solid #f1f3f4; }
+
+#comment-panel { position: fixed; top: 52px; right: -400px; width: 360px; height: calc(100vh - 52px); background: white; border-left: 1px solid #dadce0; transition: right 0.25s ease; display: flex; flex-direction: column; z-index: 600; }
+#comment-panel.open { right: 0; }
+#comment-panel-header { padding: 12px 14px; border-bottom: 1px solid #e0e0e0; display: flex; gap: 8px; background: #f8f9fa; align-items: center; }
+#comment-list { flex: 1; overflow-y: auto; padding: 12px; }
+#comment-input-area { border-top: 1px solid #e0e0e0; padding: 12px; }
+#comment-input { width: 100%; height: 72px; border: 1px solid #dadce0; border-radius: 8px; padding: 8px; font-size: 13px; resize: none; margin-bottom: 8px; outline: none; }
+#submit-comment { width: 100%; background: #1a73e8; color: white; border: none; border-radius: 6px; padding: 8px; cursor: pointer; }
+
+#loading { position: fixed; top: 52px; left: 0; right: 0; bottom: 0; background: white; display: flex; align-items: center; justify-content: center; flex-direction: column; z-index: 400; }
+.spinner { width: 32px; height: 32px; border: 3px solid #e0e0e0; border-top-color: #1a73e8; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#user-select-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 9999; display: none; align-items: center; justify-content: center; }
+#user-modal-content { background: white; padding: 32px; border-radius: 12px; text-align: center; width: 340px; }
+#user-selector { width: 100%; padding: 12px; margin: 20px 0; font-size: 15px; border-radius: 6px; border: 1px solid #dadce0; }
+#user-confirm-btn { width: 100%; background: #1a73e8; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; }
+
+thead th { overflow: visible !important; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>📊 Classroom進捗表</h1>
+  <span id="last-sync" style="font-size:11px;opacity:0.8;"></span>
+  <button id="sync-btn">🔄 今すぐ同期</button>
+</div>
+
+<div id="filter-bar">
+  <span style="font-size:11px;color:#5f6368">全体フィルタ:</span>
+  <button id="btn-all" class="filter-btn active" data-filter="all">すべて</button>
+  <button id="btn-unanswered" class="filter-btn" data-filter="unanswered">🧑‍🏫 未回答</button>
+  <button id="btn-nobold" class="filter-btn" data-filter="nobold">🧑‍🏫 太字なし</button>
+  <button id="btn-comment" class="filter-btn" data-filter="comment">💬 メモあり</button>
+  <span style="border-left:1px solid #dadce0; height:20px; margin:0 4px"></span>
+  <button id="btn-sort-desc" class="filter-btn" data-sort="desc">🕒 新しい順</button>
+  <button id="btn-sort-non-teacher-unanswered" class="filter-btn" data-sort="non-teacher-unanswered">📋 未回答数順</button>
+</div>
+
+<div id="filter-status-bar">
+  <span id="filter-text"></span>
+  <span id="clear-filter">✕ 解除</span>
+</div>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div style="color:#5f6368;font-size:13px;margin-top:10px" id="loading-text">読み込み中...</div>
+</div>
+
+<div id="table-container" style="display:none">
+  <table id="matrix-table"></table>
+</div>
+
+<div id="user-select-modal">
+  <div id="user-modal-content">
+    <h2>こんにちは！</h2>
+    <p>操作している人を選んでください</p>
+    <select id="user-selector">
+      <option value="">選択してください...</option>
+      <option value="ニカ">ニカ</option>
+      <option value="三浦">三浦</option>
+      <option value="浅沼">浅沼</option>
+      <option value="松下">松下</option>
+      <option value="小林">小林</option>
+    </select>
+    <button id="user-confirm-btn">アプリを開始する</button>
+  </div>
+</div>
+
+<div id="cell-menu" class="context-menu">
+  <div class="ctx-item" id="ctx-open-comment">💬 内部引継ぎコメント</div>
+</div>
+<div id="header-menu" class="context-menu">
+  <div id="header-menu-title" class="ctx-header">教室名</div>
+  <div class="ctx-item" data-col-filter="unanswered">🧑‍🏫 未回答のみ</div>
+  <div class="ctx-item" data-col-filter="nobold">🧑‍🏫 太字なしのみ</div>
+  <div class="ctx-item" data-col-filter="comment">💬 メモありのみ</div>
+  <div style="border-top:1px solid #f1f3f4; margin:4px 0;"></div>
+  <div class="ctx-item" data-col-sort="desc">🕒 提出が新しい順</div>
+  <div class="ctx-item" data-col-sort="asc">🕒 提出が古い順</div>
+  <div class="ctx-item" data-col-sort="non-teacher-unanswered">📋 未回答数順</div>
+</div>
+
+<div id="comment-panel">
+  <div id="comment-panel-header">
+    <span id="comment-panel-title" style="flex:1;font-size:12px;"></span>
+    <button id="resolve-all-btn" style="background:#34a853;color:white;border:none;border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer;">✓ すべて解決</button>
+    <button id="close-panel" style="background:none;border:none;cursor:pointer;font-size:18px;color:#5f6368;">×</button>
+  </div>
+  <div id="comment-list"></div>
+  <div id="comment-input-area">
+    <textarea id="comment-input" placeholder="メモを入力..."></textarea>
+    <button id="submit-comment">送信</button>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import {
+  getFirestore, doc, collection,
+  onSnapshot, setDoc, addDoc, deleteDoc, updateDoc,
+  query, where
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+// ===== Firebase設定 =====
+const firebaseConfig = {
+  apiKey: "AIzaSyD5IygAyCjgzAx5Tu1DZlDGidPdvKdvU50",
+  authDomain: "igo-classroom-progress.firebaseapp.com",
+  projectId: "igo-classroom-progress",
+  storageBucket: "igo-classroom-progress.firebasestorage.app",
+  messagingSenderId: "710694204154",
+  appId: "1:710694204154:web:9f4b5dcacb114c15ba0f43"
+};
+
+// ===== GAS URL（同期トリガー用）=====
+// GASを再デプロイしたら新しいURLに差し替えてください
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwkSCvMccvwfByC1b-7AP4apbLWTkiR6v0jNvLE-TCl7-e4g6Xo_SgychBtHbaAfoC6jQ/exec';
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ===== 状態 =====
+let matrixData = null;
+let boldCells = new Set();
+let commentCounts = {};
+let currentUserName = '';
+let activeColIdx = -1, activeFilter = 'all', activeSort = 'default';
+let ctxCwId = '', ctxUserId = '', ctxUserIdx = -1;
+let commentPanelUnsub = null;
+let syncTimeoutId = null;
+
+// ===== 起動 =====
+document.addEventListener('DOMContentLoaded', () => {
+  checkUserSession();
+  setupEventListeners();
+  startFirestoreListeners();
+});
+
+// ===== Firestoreリスナー =====
+function startFirestoreListeners() {
+  // マトリクスデータ（GAS同期後に更新）
+  onSnapshot(doc(db, 'snapshot', 'current'), (snap) => {
+    if (!snap.exists()) {
+      document.getElementById('loading-text').textContent =
+        'データがありません。GASで「⑥全部実行」を一度手動で実行してください。';
+      return;
+    }
+    try {
+      matrixData = JSON.parse(snap.data().data);
+    } catch(e) {
+      console.error('データパースエラー:', e);
+      return;
+    }
+    document.getElementById('last-sync').textContent =
+      matrixData.lastSync ? `最終同期: ${matrixData.lastSync}` : '';
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('table-container').style.display = 'block';
+
+    // 同期中だったボタンを戻す
+    if (syncTimeoutId) {
+      clearTimeout(syncTimeoutId);
+      syncTimeoutId = null;
+    }
+    const btn = document.getElementById('sync-btn');
+    btn.disabled = false;
+    btn.textContent = '🔄 今すぐ同期';
+
+    renderTable();
+  });
+
+  // 太字セル（リアルタイム）
+  onSnapshot(collection(db, 'boldCells'), (snap) => {
+    boldCells = new Set();
+    snap.forEach(d => { if (d.data().isBold) boldCells.add(d.id); });
+    if (matrixData) renderTable();
+  });
+
+  // コメント数（リアルタイム）
+  onSnapshot(
+    query(collection(db, 'comments'), where('resolved', '==', false)),
+    (snap) => {
+      commentCounts = {};
+      snap.forEach(d => {
+        const c = d.data();
+        if (c.parentId) return;
+        const key = c.courseWorkId + '::' + c.schoolUserId;
+        commentCounts[key] = (commentCounts[key] || 0) + 1;
+      });
+      if (matrixData) renderTable();
+    }
+  );
+}
+
+// ===== ユーザーセッション =====
+function checkUserSession() {
+  const saved = localStorage.getItem('progress_app_user');
+  if (saved) { currentUserName = saved; }
+  else {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('user-select-modal').style.display = 'flex';
+  }
+}
+
+function setupEventListeners() {
+  document.getElementById('user-confirm-btn').addEventListener('click', () => {
+    const name = document.getElementById('user-selector').value;
+    if (!name) return;
+    localStorage.setItem('progress_app_user', name);
+    currentUserName = name;
+    document.getElementById('user-select-modal').style.display = 'none';
+    document.getElementById('loading').style.display = 'flex';
+  });
+
+  document.getElementById('sync-btn').addEventListener('click', triggerSync);
+  document.getElementById('close-panel').addEventListener('click', closeCommentPanel);
+  document.getElementById('submit-comment').addEventListener('click', submitComment);
+  document.getElementById('resolve-all-btn').addEventListener('click', resolveAllComments);
+  document.getElementById('clear-filter').addEventListener('click', clearAllFilters);
+
+  // フィルターボタン
+  document.querySelectorAll('[data-filter]').forEach(btn => {
+    btn.addEventListener('click', () => applyQuickFilter(btn.dataset.filter));
+  });
+  document.querySelectorAll('[data-sort]').forEach(btn => {
+    btn.addEventListener('click', () => applyQuickSort(btn.dataset.sort));
+  });
+  document.querySelectorAll('[data-col-filter]').forEach(btn => {
+    btn.addEventListener('click', () => { activeFilter = btn.dataset.colFilter; renderTable(); });
+  });
+  document.querySelectorAll('[data-col-sort]').forEach(btn => {
+    btn.addEventListener('click', () => { activeSort = btn.dataset.colSort; renderTable(); });
+  });
+
+  // コンテキストメニューを閉じる
+  document.addEventListener('click', () =>
+    document.querySelectorAll('.context-menu').forEach(m => m.classList.remove('visible'))
+  );
+  document.getElementById('ctx-open-comment').addEventListener('click', openCommentPanel);
+}
+
+// ===== 同期トリガー =====
+function triggerSync() {
+  const btn = document.getElementById('sync-btn');
+  btn.disabled = true;
+  btn.textContent = '同期中... (30〜60秒)';
+
+  // GASをno-corsで叩く（レスポンスは読まない、Firestoreから受け取る）
+  fetch(GAS_URL + '?action=sync', { mode: 'no-cors' }).catch(() => {});
+
+  // 3分でタイムアウト
+  syncTimeoutId = setTimeout(() => {
+    btn.disabled = false;
+    btn.textContent = '🔄 今すぐ同期';
+    alert('同期がタイムアウトしました。GASで手動実行してください。');
+  }, 180000);
+}
+
+// ===== テーブル描画 =====
+function applyQuickFilter(type) { activeColIdx = -1; activeFilter = type; renderTable(); }
+function applyQuickSort(type) { activeColIdx = -1; activeSort = (activeSort === type) ? 'default' : type; renderTable(); }
+function clearAllFilters() { activeColIdx = -1; activeFilter = 'all'; activeSort = 'default'; renderTable(); }
+
+function renderTable() {
+  if (!matrixData) return;
+  const table = document.getElementById('matrix-table');
+  const statusBar = document.getElementById('filter-status-bar');
+  const container = document.getElementById('table-container');
+
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  if (activeColIdx === -1) {
+    const fb = document.querySelector(`[data-filter="${activeFilter}"]`);
+    if (fb) fb.classList.add('active');
+    if (activeSort !== 'default') {
+      const sb = document.querySelector(`[data-sort="${activeSort}"]`);
+      if (sb) sb.classList.add('active');
+    }
+  }
+
+  let displayList = [...matrixData.questions];
+
+  if (activeFilter !== 'all') {
+    displayList = displayList.filter(q => {
+      const isT = /🧑‍🏫|👩‍🏫|👨‍🏫/.test(q.title);
+      const check = (idx) => {
+        const k = q.courseWorkId + '::' + matrixData.schools[idx].userId;
+        if (activeFilter === 'unanswered') return isT && !q.answers[idx].answer;
+        if (activeFilter === 'nobold') return isT && !boldCells.has(k);
+        if (activeFilter === 'comment') return commentCounts[k] > 0;
+        return true;
+      };
+      return activeColIdx !== -1 ? check(activeColIdx) : q.answers.some((_, i) => check(i));
+    });
+  }
+
+  if (activeSort === 'non-teacher-unanswered') {
+    displayList.sort((a, b) => {
+      const count = (q) => activeColIdx !== -1
+        ? (q.answers[activeColIdx].answer ? 0 : 1)
+        : q.answers.filter(ans => !ans.answer).length;
+      return count(b) - count(a);
+    });
+  } else if (activeSort !== 'default') {
+    displayList.sort((a, b) => {
+      const getTs = (q) => {
+        const arr = activeColIdx !== -1 ? [q.answers[activeColIdx]] : q.answers;
+        return Math.max(...arr.map(ans => ans.timestamp ? new Date('2025/' + ans.timestamp).getTime() : 0));
+      };
+      return activeSort === 'desc' ? getTs(b) - getTs(a) : getTs(a) - getTs(b);
+    });
+  }
+
+  if (activeFilter !== 'all' || activeSort !== 'default') {
+    statusBar.style.display = 'flex'; container.classList.add('has-status');
+    const scope = activeColIdx !== -1 ? `【${matrixData.schools[activeColIdx].name}】` : '【全体】';
+    const fNames = { unanswered:'未回答のみ', nobold:'太字なしのみ', comment:'メモありのみ', all:'' };
+    const sNames = { desc:'提出が新しい順', 'non-teacher-unanswered':'未回答数順', asc:'提出が古い順', default:'' };
+    document.getElementById('filter-text').textContent = `${scope} ${fNames[activeFilter]} ${sNames[activeSort]}`;
+  } else {
+    statusBar.style.display = 'none'; container.classList.remove('has-status');
+  }
+
+  const savedWidths = JSON.parse(localStorage.getItem('col_widths') || '{}');
+  const topicColorMap = new Map();
+  let colorIdx = 0;
+  matrixData.questions.forEach(q => {
+    if (q.topicId && !topicColorMap.has(q.topicId)) {
+      topicColorMap.set(q.topicId, colorIdx++ % 8);
+    }
+  });
+
+  let html = `<thead><tr><th class="col-task sticky-col" style="${savedWidths[0] ? 'width:'+savedWidths[0] : 'width:200px'}">課題</th>`;
+  matrixData.schools.forEach((s, i) => {
+    html += `<th data-col-idx="${i}" style="${savedWidths[i+1] ? 'width:'+savedWidths[i+1] : ''}">${escHtml(s.name)}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  let lastTopicId = '';
+  displayList.forEach(q => {
+    if (q.topicId && q.topicId !== lastTopicId) {
+      const ci = topicColorMap.get(q.topicId) ?? 0;
+      html += `<tr class="topic-row topic-color-${ci}">
+        <td class="sticky-col">${escHtml(q.topicName || 'トピックなし')}</td>
+        <td colspan="${matrixData.schools.length}" class="topic-row-rest"></td>
+      </tr>`;
+      lastTopicId = q.topicId;
+    }
+
+    const taskColorClass = topicColorMap.has(q.topicId) ? `topic-color-${topicColorMap.get(q.topicId)}` : '';
+    html += `<tr class="question-row">
+      <td class="task-name sticky-col ${taskColorClass}">
+        <a href="${q.link}" target="_blank">${escHtml(q.title)}</a>
+      </td>`;
+
+    q.answers.forEach((ans, i) => {
+      const k = q.courseWorkId + '::' + matrixData.schools[i].userId;
+      const isTeacher = /🧑‍🏫|👩‍🏫|👨‍🏫/.test(q.title);
+      let cls = '';
+      if (isTeacher) cls += ans.answer ? ' teacher-answered' : ' teacher-unanswered';
+      if (boldCells.has(k)) cls += ' is-bold';
+      if (ans.isRed) cls += ' is-red';
+      const cnt = commentCounts[k] || 0;
+
+      html += `<td class="answer-cell${cls}"
+          data-cwid="${escHtml(q.courseWorkId)}"
+          data-uid="${escHtml(matrixData.schools[i].userId)}"
+          data-uidx="${i}">
+        <div class="answer-text">${linkify(ans.answer)}</div>
+        ${ans.timestamp ? `<div class="answer-ts">${ans.timestamp}</div>` : ''}
+        ${cnt > 0 ? `<span class="comment-badge">💬<span class="comment-count">${cnt}</span></span>` : ''}
+      </td>`;
+    });
+    html += '</tr>';
+  });
+
+  table.innerHTML = html;
+
+  // ヘッダー右クリック
+  table.querySelectorAll('thead th[data-col-idx]').forEach(th => {
+    th.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      activeColIdx = parseInt(th.dataset.colIdx);
+      document.getElementById('header-menu-title').textContent = `教室：${matrixData.schools[activeColIdx].name}`;
+      const m = document.getElementById('header-menu');
+      m.style.left = e.clientX + 'px'; m.style.top = e.clientY + 'px';
+      m.classList.add('visible');
+    });
+  });
+
+  // セル右クリック・ダブルクリック
+  table.querySelectorAll('.answer-cell').forEach(td => {
+    td.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      ctxCwId = td.dataset.cwid;
+      ctxUserId = td.dataset.uid;
+      ctxUserIdx = parseInt(td.dataset.uidx);
+      const m = document.getElementById('cell-menu');
+      m.style.left = e.clientX + 'px'; m.style.top = e.clientY + 'px';
+      m.classList.add('visible');
+    });
+    td.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      const k = td.dataset.cwid + '::' + td.dataset.uid;
+      toggleBold(td, k);
+    });
+  });
+
+  initColResize();
+}
+
+// ===== 太字トグル（Firestore直接） =====
+async function toggleBold(el, k) {
+  const nowBold = boldCells.has(k);
+  // UI即時反映
+  if (nowBold) { el.classList.remove('is-bold'); boldCells.delete(k); }
+  else { el.classList.add('is-bold'); boldCells.add(k); }
+
+  try {
+    await setDoc(doc(db, 'boldCells', k), {
+      isBold: !nowBold,
+      updatedAt: new Date().toISOString()
+    });
+  } catch(e) {
+    // 失敗時はロールバック
+    if (nowBold) { el.classList.add('is-bold'); boldCells.add(k); }
+    else { el.classList.remove('is-bold'); boldCells.delete(k); }
+    alert('保存に失敗しました');
+  }
+}
+
+// ===== コメントパネル =====
+function openCommentPanel() {
+  if (!ctxCwId) return;
+  const q = matrixData.questions.find(x => x.courseWorkId === ctxCwId);
+  const schoolName = matrixData.schools[ctxUserIdx]?.name || '';
+  document.getElementById('comment-panel-title').textContent =
+    `${q ? q.title : ''} / ${schoolName}`;
+  document.getElementById('comment-panel').classList.add('open');
+
+  // 既存のリスナーを解除
+  if (commentPanelUnsub) commentPanelUnsub();
+
+  // このセルのコメントをリアルタイム購読
+  commentPanelUnsub = onSnapshot(
+    query(
+      collection(db, 'comments'),
+      where('courseWorkId', '==', ctxCwId),
+      where('schoolUserId', '==', ctxUserId),
+      where('resolved', '==', false)
+    ),
+    (snap) => {
+      const comments = [];
+      snap.forEach(d => comments.push({ id: d.id, ...d.data() }));
+      comments.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+      renderComments(comments);
+    }
+  );
+}
+
+function closeCommentPanel() {
+  document.getElementById('comment-panel').classList.remove('open');
+  if (commentPanelUnsub) { commentPanelUnsub(); commentPanelUnsub = null; }
+}
+
+function renderComments(comments) {
+  document.getElementById('comment-list').innerHTML = comments.length
+    ? comments.map(c => `
+        <div style="background:#f1f3f4;padding:8px;border-radius:6px;margin-bottom:8px">
+          <div style="font-size:11px;color:#1a73e8;display:flex;justify-content:space-between;align-items:center">
+            <span><strong>${escHtml(c.authorEmail)}</strong> ${c.createdAt}</span>
+            <button data-id="${c.id}" style="background:none;border:none;cursor:pointer;color:#d93025;font-size:16px;padding:4px 8px;">🗑</button>
+          </div>
+          <div style="font-size:13px;white-space:pre-wrap;margin-top:4px">${escHtml(c.text)}</div>
+        </div>`).join('')
+    : '<div style="color:#5f6368;font-size:12px;">メモなし</div>';
+
+  // 削除ボタン
+  document.querySelectorAll('#comment-list button[data-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.textContent = '...';
+      await deleteDoc(doc(db, 'comments', btn.dataset.id));
+    });
+  });
+}
+
+async function submitComment() {
+  const text = document.getElementById('comment-input').value.trim();
+  if (!text || !ctxCwId) return;
+  const now = new Date();
+  const createdAt = `${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  await addDoc(collection(db, 'comments'), {
+    courseWorkId: ctxCwId,
+    schoolUserId: ctxUserId,
+    parentId: '',
+    authorEmail: currentUserName || '不明',
+    text,
+    createdAt,
+    resolved: false
+  });
+  document.getElementById('comment-input').value = '';
+}
+
+async function resolveAllComments() {
+  if (!ctxCwId) return;
+  const btn = document.getElementById('resolve-all-btn');
+  btn.disabled = true; btn.textContent = '処理中...';
+  try {
+    // コメントパネルのリスナーから現在のIDを取得する代わりに、
+    // Firestoreに直接クエリして解決済みにする
+    const snap = await new Promise(resolve => {
+      const unsub = onSnapshot(
+        query(
+          collection(db, 'comments'),
+          where('courseWorkId', '==', ctxCwId),
+          where('schoolUserId', '==', ctxUserId),
+          where('resolved', '==', false)
+        ),
+        (s) => { unsub(); resolve(s); }
+      );
+    });
+    const updates = snap.docs.map(d => updateDoc(doc(db, 'comments', d.id), { resolved: true }));
+    await Promise.all(updates);
+  } finally {
+    btn.disabled = false; btn.textContent = '✓ すべて解決';
+  }
+}
+
+// ===== ユーティリティ =====
+function escHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function linkify(str) {
+  const escaped = escHtml(str);
+  return escaped.replace(/(https?:\/\/[^\s<>"&]+)/g, url => {
+    const display = url.length > 40 ? url.slice(0, 40) + '...' : url;
+    return `<a href="${url}" target="_blank" style="color:#1a73e8">${display}</a>`;
+  });
+}
+
+// ===== 列幅リサイズ =====
+function initColResize() {
+  const ths = document.querySelectorAll('#matrix-table thead th');
+  const saved = JSON.parse(localStorage.getItem('col_widths') || '{}');
+  ths.forEach((th, j) => { if (saved[j]) { th.style.width = saved[j]; th.style.minWidth = saved[j]; } });
+
+  const thead = document.querySelector('#matrix-table thead');
+  if (!thead || thead._colResizeInit) return;
+  thead._colResizeInit = true;
+
+  let resizing = false, resizingTh = null, startX = 0, startW = 0;
+
+  thead.addEventListener('mousemove', (e) => {
+    if (resizing) return;
+    const th = e.target.closest('th');
+    if (!th) return;
+    const dist = th.getBoundingClientRect().right - e.clientX;
+    th.style.cursor = (dist >= 0 && dist <= 8) ? 'col-resize' : '';
+  });
+
+  thead.addEventListener('mousedown', (e) => {
+    const th = e.target.closest('th');
+    if (!th) return;
+    const dist = th.getBoundingClientRect().right - e.clientX;
+    if (dist < 0 || dist > 8) return;
+    e.preventDefault(); e.stopPropagation();
+    resizing = true; resizingTh = th;
+    startX = e.clientX; startW = th.getBoundingClientRect().width;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = (ev) => {
+      const newW = Math.max(40, startW + ev.clientX - startX);
+      resizingTh.style.width = newW + 'px'; resizingTh.style.minWidth = newW + 'px';
+    };
+    const onUp = () => {
+      resizing = false;
+      document.body.style.cursor = ''; document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      const widths = {};
+      ths.forEach((t, j) => { widths[j] = t.getBoundingClientRect().width + 'px'; });
+      localStorage.setItem('col_widths', JSON.stringify(widths));
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+</script>
+</body>
+</html>
