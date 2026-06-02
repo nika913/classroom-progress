@@ -421,7 +421,8 @@ function checkUserSession() {
 
 function triggerSync() {
   const btn=document.getElementById('sync-btn'); btn.disabled=true; btn.textContent='同期中... ⏳';
-  fetch(GAS_URL+'?action=sync',{mode:'no-cors'}).catch(()=>{});
+  const img = new Image();
+  img.src = GAS_URL+'?action=sync&t='+Date.now();
   syncTimeoutId=setTimeout(()=>{ btn.disabled=false; btn.textContent='🔄 今すぐ同期'; alert('同期に時間がかかっています。GASのメニューから「⑥全部実行」を試してください。（バックグラウンドでまだ動いている可能性があります）'); },300000);
 }
 function clearSchoolFilter() { window.location.href=window.location.pathname; }
